@@ -1,8 +1,8 @@
 # UsageBar
 
-App nativo de barra de menus para macOS 14+, em SwiftUI. Monitora limites de assinaturas de Claude, Codex e, experimentalmente, Devin. Não mede gastos das APIs.
+A native macOS 14+ menu bar app, in SwiftUI, that monitors subscription limits for Claude, Codex and, experimentally, Devin. It does not measure API spend.
 
-## Executar
+## Run
 
 ```sh
 git clone https://github.com/CarlosSouza/UsageBar.git
@@ -11,69 +11,73 @@ bash scripts/build-app.sh
 open dist/UsageBar.app
 ```
 
-O script gera um `.app` com assinatura ad hoc para uso local, sem instalar em Aplicativos. Para distribuir a outras pessoas, faltam assinatura Developer ID e notarização. Requer Command Line Tools / Swift 6. O app roda enquanto estiver aberto e o Mac estiver acordado e conectado; não há monitoramento em servidor.
+The script produces an ad hoc signed `.app` for local use, without installing it into Applications. Distributing to other people still needs a Developer ID signature and notarization. Requires Command Line Tools / Swift 6. The app only runs while it is open and the Mac is awake and online; there is no server-side monitoring.
 
 ## Claude
 
-Requer Claude Code v2.1.251+ com assinatura que exponha `rate_limits` na statusline (documentado para Pro/Max). Após conectar, os dados aparecem depois de uma resposta do assistente.
+Requires Claude Code v2.1.251+ with a subscription that exposes `rate_limits` in the statusline (documented for Pro/Max). After connecting, data shows up after the assistant's next reply.
 
 ```sh
 /usr/bin/python3 scripts/connect-claude.py
 ```
 
-O instalador faz backup de `~/.claude/settings.json`, preserva outras preferências e encadeia o comando de statusline anterior. Ele não é executado automaticamente pelo build. Reinicie sua sessão do Claude Code após instalar. Se houver configuração de statusline específica do projeto, ela pode sobrepor a configuração global.
+The installer backs up `~/.claude/settings.json`, preserves other preferences and chains the previous statusline command. It is not run automatically by the build. Restart your Claude Code session after installing. A project-specific statusline configuration can override the global one.
 
-Apenas percentual, renovação e horário de observação são exportados para `~/Library/Application Support/UsageBar/claude.json`; prompts e respostas não são armazenados. O UsageBar lê o arquivo a cada 30 segundos. Reexecuções com métricas idênticas preservam o horário anterior: após 15 minutos sem mudança os dados são conservadoramente considerados antigos. Dados ausentes ou antigos não viram zero nem geram novos alertas. Uso feito fora do Claude Code só será observado quando o CLI atualizar seus limites.
+Only the percentage, reset time and observation time are exported to `~/Library/Application Support/UsageBar/claude.json`; prompts and replies are never stored. UsageBar reads the file every 30 seconds. Re-runs with identical metrics keep the previous timestamp: after 15 minutes without change the data is conservatively treated as stale. Missing or stale data never becomes zero and never triggers new alerts. Usage outside Claude Code is only observed when the CLI refreshes its limits.
 
-Para desfazer: restaure apenas `statusLine` do backup e remova os scripts de `~/Library/Application Support/UsageBar/`; preserve mudanças posteriores em outras preferências.
+To undo: restore only `statusLine` from the backup and remove the scripts from `~/Library/Application Support/UsageBar/`; keep later changes to other preferences.
 
 ## Codex
 
-Faça login no Codex CLI com sua assinatura ChatGPT e confira o caminho do executável em Ajustes. O app usa `codex app-server` e `account/rateLimits/read` a cada 5 minutos, com todas as janelas retornadas. Não abre conversas, não envia prompts e não lê tokens de autenticação diretamente. Login por API key pode não retornar cotas da assinatura.
+Log in to the Codex CLI with your ChatGPT subscription and check the executable path in Settings. The app uses `codex app-server` and `account/rateLimits/read` every 5 minutes, with every window returned. It opens no conversations, sends no prompts and does not read authentication tokens directly. API key logins may not return subscription quotas.
 
 ## Devin (experimental)
 
-A API pública de consumo exige Enterprise. Este adaptador usa o endpoint não documentado do painel web, também identificado no código do CodexBar. A compatibilidade com sua conta Core/básica precisa ser confirmada; nenhum saldo de ACUs é convertido artificialmente em percentual.
+The public consumption API requires Enterprise. This adapter uses the undocumented web dashboard endpoint, also identified in the CodexBar source. Compatibility with Core/basic accounts still needs confirming; no ACU balance is artificially converted into a percentage.
 
-1. Entre em `https://app.devin.ai/` e abra Usage & Limits da organização.
-2. No inspetor do navegador, aba Network, localize a requisição bem-sucedida que termina em `/billing/quota/usage`.
-3. Copie **somente para os ajustes locais do UsageBar** o Bearer token de `Authorization` e o ID interno `x-cog-org-id` (`org_…` ou `org-…`). Não envie esses valores no chat.
-4. Esta versão lê `daily_percentage`, `weekly_percentage`, `daily_reset_at` e `weekly_reset_at`. Os percentuais são usados diretamente: `100` significa 100%, `1` significa 1%. A antiga opção de fração foi removida e sua preferência salva é ignorada.
-5. Salve a sessão, ative o monitor e compare com o painel antes de habilitar os alertas.
+1. Sign in at `https://app.devin.ai/` and open the organization's Usage & Limits.
+2. In the browser inspector, Network tab, find the successful request ending in `/billing/quota/usage`.
+3. Copy **only into UsageBar's local settings** the Bearer token from `Authorization` and the internal `x-cog-org-id` (`org_…` or `org-…`). Never paste these values into a chat.
+4. This version reads `daily_percentage`, `weekly_percentage`, `daily_reset_at` and `weekly_reset_at`. Percentages are used as is: `100` means 100%, `1` means 1%. The old fraction option was removed and any saved preference for it is ignored.
+5. Save the session, enable the monitor and compare with the dashboard before enabling alerts.
 
-O token fica no Chaves, é enviado somente a `https://app.devin.ai`, e redirecionamentos são recusados. A sessão não é renovada automaticamente; será necessário substituí-la quando expirar. Não há varredura de cookies do navegador. Planos sem essas cotas ou mudanças no endpoint aparecem como erro, não como consumo zero. Atualização a cada 5 minutos.
+The token is kept in the Keychain, sent only to `https://app.devin.ai`, and redirects are refused. The session is not renewed automatically; replace it when it expires. There is no browser cookie scanning. Plans without these quotas, or endpoint changes, show up as errors, not as zero usage. Refreshed every 5 minutes.
 
-## Exportação local (codex.json e devin.json)
+## Local export (codex.json and devin.json)
 
-Além do `claude.json`, o app grava `~/Library/Application Support/UsageBar/codex.json` e `devin.json` a cada leitura (a cada 5 minutos, quando o provedor está habilitado): `observed_at`, `windows[]` com `id`, `title`, `usedPercent`, `resetsAt`, `observedAt` (epoch em segundos) e `error`. Só métricas, nenhum token. Scripts locais podem ler esses arquivos em vez de guardar credenciais.
+Besides `claude.json`, the app writes `~/Library/Application Support/UsageBar/codex.json` and `devin.json` on every read (every 5 minutes while the provider is enabled): `observed_at`, `windows[]` with `id`, `title`, `usedPercent`, `resetsAt`, `observedAt` (epoch seconds) and `error`. Metrics only, no tokens. Local scripts can read these files instead of holding credentials.
 
-## Alertas
+## Alerts
 
-Cada provedor tem threshold de 1–100%, inicialmente 90%. Um alerta é enviado quando uma leitura válida atinge ou ultrapassa o threshold, inclusive se a primeira leitura já estiver acima. O controle por provedor, janela, renovação e canal persiste entre execuções. Alterar o threshold não reenvia uma janela já notificada. Falhas de entrega tentam novamente após 5 minutos enquanto a métrica permanecer recente; timeouts de rede podem causar duplicação se o servidor tiver aceitado a mensagem.
+Each provider has a 1–100% threshold, initially 90%. An alert is sent when a valid reading reaches or exceeds the threshold, including when the very first reading is already above it. Dedup state per provider, window, reset time and channel persists across runs. Changing the threshold does not resend an already notified window. Delivery failures retry after 5 minutes while the metric stays fresh; network timeouts can cause duplicates if the server had accepted the message.
 
-- **macOS:** em Ajustes, use “Permitir notificações”, habilite o canal e teste. O sistema pode silenciar banners conforme Foco e preferências.
-- **iPhone/Apple Watch:** instale o [ntfy para iOS](https://docs.ntfy.sh/subscribe/phone/). No ntfy, adicione uma assinatura preenchendo separadamente `Servidor = https://ntfy.sh` e `Tópico = usagebar_...`; não cole a URL inteira no campo de tópico. Depois salve a configuração no UsageBar, teste e habilite o canal. Servidores próprios HTTPS também são aceitos.
-- No servidor público, o nome aleatório do tópico funciona como senha. Mantenha-o privado ou configure um access token em um tópico protegido. O UsageBar guarda o token opcional no Chaves e envia ao ntfy apenas o texto do alerta.
-- Habilite o espelhamento de notificações do ntfy no Watch. O sistema Apple normalmente entrega ao iPhone **ou** ao Watch conforme uso/bloqueio, sem garantir dois alertas simultâneos.
+- **macOS:** in Settings, use "Allow notifications", enable the channel and test. The system may silence banners according to Focus and preferences.
+- **iPhone/Apple Watch:** install [ntfy for iOS](https://docs.ntfy.sh/subscribe/phone/). In ntfy, add a subscription filling `Server = https://ntfy.sh` and `Topic = usagebar_...` separately; do not paste the whole URL into the topic field. Then save the configuration in UsageBar, test and enable the channel. Self-hosted HTTPS servers are also accepted.
+- On the public server the random topic name acts as the password. Keep it private or configure an access token on a protected topic. UsageBar keeps the optional token in the Keychain and sends ntfy only the alert text.
+- Enable ntfy notification mirroring on the Watch. Apple normally delivers to the iPhone **or** the Watch depending on use/lock state, with no guarantee of two simultaneous alerts.
 
-As notificações vêm desativadas até a configuração. A aceitação de um envio pelo sistema/ntfy não prova que o dispositivo exibiu o alerta. O Mac precisa estar ligado, conectado e com o UsageBar aberto.
+Notifications are disabled until configured. A send being accepted by the system or by ntfy does not prove the device displayed it. The Mac must be on, online and with UsageBar open.
 
-## Verificação
+## Verify
 
 ```sh
 CLANG_MODULE_CACHE_PATH=/private/tmp/usagebar-clang SWIFTPM_MODULECACHE_OVERRIDE=/private/tmp/usagebar-modules swift run --scratch-path /private/tmp/usagebar-build --cache-path /private/tmp/usagebar-cache --disable-sandbox UsageCoreChecks
-/usr/bin/python3 -m unittest discover -s tests -p 'test_*.py'
+/usr/bin/python3 -m unittest discover -s Tests -p 'test_*.py'
 ```
 
-Testes cobrem thresholds, renovação, deduplicação persistente por canal, dados antigos/ausentes e parsing. Validação de login real e entrega nos dispositivos depende da configuração das contas.
+Tests cover thresholds, reset handling, persistent per-channel dedup, stale/missing data and parsing. Real login validation and device delivery depend on the account setup.
 
-## Fontes
+## Sources
 
-- [Claudebar, referência funcional](https://github.com/mryll/claudebar)
-- [Claude Code: statusline e rate limits](https://code.claude.com/docs/en/statusline#rate-limit-usage)
-- [Documentação oficial OpenAI: Codex App Server](https://developers.openai.com/pt-BR/docs/app-server)
-- [Devin: API Enterprise de consumo](https://docs.devin.ai/api-reference/v3/consumption/organizations-consumption-daily)
-- [CodexBar: integração web do Devin](https://github.com/steipete/CodexBar/blob/main/docs/devin.md)
-- [ntfy: publicação por HTTP](https://docs.ntfy.sh/publish/)
-- [ntfy para iPhone](https://docs.ntfy.sh/subscribe/phone/)
-- [Apple: notificações no Watch](https://support.apple.com/en-us/108369)
+- [Claudebar, functional reference](https://github.com/mryll/claudebar)
+- [Claude Code: statusline and rate limits](https://code.claude.com/docs/en/statusline#rate-limit-usage)
+- [OpenAI docs: Codex App Server](https://developers.openai.com/docs/app-server)
+- [Devin: Enterprise consumption API](https://docs.devin.ai/api-reference/v3/consumption/organizations-consumption-daily)
+- [CodexBar: Devin web integration](https://github.com/steipete/CodexBar/blob/main/docs/devin.md)
+- [ntfy: publishing over HTTP](https://docs.ntfy.sh/publish/)
+- [ntfy for iPhone](https://docs.ntfy.sh/subscribe/phone/)
+- [Apple: notifications on the Watch](https://support.apple.com/en-us/108369)
+
+## License
+
+[MIT](LICENSE).
