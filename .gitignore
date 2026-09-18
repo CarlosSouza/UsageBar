@@ -1,0 +1,7 @@
+.build/
+dist/
+__pycache__/
+.DS_Store
+# local agent settings (account pinning, session files)
+.claude/
+CLAUDE.md
