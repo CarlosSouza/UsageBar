@@ -122,7 +122,7 @@ struct ProviderView: View {
                                     .font(.system(.body, design: .rounded).weight(.semibold)).monospacedDigit()
                             }
                             ProgressView(value: min(window.usedPercent, 100), total: 100)
-                                .tint(window.usedPercent >= threshold ? .orange : color)
+                                .tint(window.usedPercent >= threshold ? .red : color)
                                 .accessibilityLabel("\(name), \(window.title), \(Int(window.usedPercent)) por cento consumido")
                             if !window.isFresh(at: context.date) || state.error != nil {
                                 Text("Dados antigos · última leitura \(window.observedAt.formatted(date: .omitted, time: .shortened))")
