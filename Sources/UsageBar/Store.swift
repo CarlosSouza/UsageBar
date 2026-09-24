@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import UserNotifications
+import WidgetKit
 import UsageCore
 
 struct Preferences: Codable {
@@ -91,6 +92,7 @@ final class Store: ObservableObject {
     private var lastCodexRead = Date.distantPast
     private var lastDevinRead = Date.distantPast
     private var retryAfter: [String: Date] = [:]
+    private var lastWidgetSnapshot: WidgetSnapshot?
     private let defaults = UserDefaults.standard
 
     init() {
@@ -151,6 +153,28 @@ final class Store: ObservableObject {
         }
         if preferences.devinEnabled {
             await evaluate(provider: "Devin", windows: devin.windows, threshold: preferences.devinThreshold, valid: devin.error == nil)
+        }
+        publishWidgetSnapshot()
+    }
+
+    private func publishWidgetSnapshot() {
+        let providers: [WidgetSnapshot.Provider] = [
+            preferences.claudeEnabled ? .init(id: "claude", threshold: preferences.claudeThreshold, windows: claude.windows, error: claude.error) : nil,
+            preferences.codexEnabled ? .init(id: "codex", threshold: preferences.codexThreshold, windows: codex.windows, error: codex.error) : nil,
+            preferences.devinEnabled ? .init(id: "devin", threshold: preferences.devinThreshold, windows: devin.windows, error: devin.error) : nil
+        ].compactMap { $0 }
+        let snapshot = WidgetSnapshot(providers: providers)
+        guard snapshot != lastWidgetSnapshot else { return }
+        let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/UsageBar")
+        let target = directory.appendingPathComponent(WidgetSnapshot.fileName)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            try snapshot.encoded().write(to: target, options: [.atomic])
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
+            lastWidgetSnapshot = snapshot
+            WidgetCenter.shared.reloadAllTimelines()
+        } catch {
+            // O widget é auxiliar: falha aqui não pode derrubar a leitura nem o alerta.
         }
     }
 

@@ -47,6 +47,12 @@ The token is kept in the Keychain, sent only to `https://app.devin.ai`, and redi
 
 Besides `claude.json`, the app writes `~/Library/Application Support/UsageBar/codex.json` and `devin.json` on every read (every 5 minutes while the provider is enabled): `observed_at`, `windows[]` with `id`, `title`, `usedPercent`, `resetsAt`, `observedAt` (epoch seconds) and `error`. Metrics only, no tokens. Local scripts can read these files instead of holding credentials.
 
+## Desktop widget
+
+The app bundles a WidgetKit extension. Right-click the desktop, choose **Edit Widgets** and search for UsageBar: there is a small widget per provider (Claude, Codex, Devin) and a medium one with every enabled provider side by side.
+
+After each read the app writes `~/Library/Application Support/UsageBar/widget.json` (enabled providers, thresholds and windows; metrics only) and asks WidgetKit to reload. The sandboxed extension only has read-only access to that folder, never to tokens or the network. Readings older than 15 minutes, or past their reset, show as stale even while the app is closed. The system decides the exact redraw time, so the widget may lag the menu slightly.
+
 ## Alerts
 
 Each provider has a 1–100% threshold, initially 90%. An alert is sent when a valid reading reaches or exceeds the threshold, including when the very first reading is already above it. Dedup state per provider, window, reset time and channel persists across runs. Changing the threshold does not resend an already notified window. Delivery failures retry after 5 minutes while the metric stays fresh; network timeouts can cause duplicates if the server had accepted the message.

@@ -56,6 +56,29 @@ struct UsageChecks {
     func testDevinWithoutResetCannotTriggerFalseCycleAlerts() throws {
         checkTrue(try UsageParsing.devin(Data(#"{"daily_percentage":95}"#.utf8)).isEmpty)
     }
+    func testWidgetSnapshotRoundTripAndFreshness() throws {
+        var stale = window(40); stale.id = "daily"; stale.observedAt = now.addingTimeInterval(-901)
+        let snapshot = WidgetSnapshot(providers: [
+            .init(id: "claude", threshold: 90, windows: [window()], error: nil),
+            .init(id: "devin", threshold: 80, windows: [stale, window()], error: nil),
+            .init(id: "codex", threshold: 90, windows: [window()], error: "offline")
+        ])
+        let restored = try WidgetSnapshot.decode(snapshot.encoded())
+        checkEqual(restored, snapshot)
+        checkTrue(restored.provider("claude")!.isFresh(at: now))
+        checkFalse(restored.provider("devin")!.isFresh(at: now))
+        checkFalse(restored.provider("codex")!.isFresh(at: now))
+        checkFalse(WidgetSnapshot.Provider(id: "claude", threshold: 90, windows: [], error: nil).isFresh(at: now))
+        checkEqual(restored.transitions(after: now), [now.addingTimeInterval(900), now.addingTimeInterval(3600)])
+    }
+    func testWidgetTopWindowsKeepsOrderAndPicksMostConsumed() {
+        let windows = [("a", 10.0), ("b", 70.0), ("c", 30.0), ("d", 90.0)].map {
+            UsageWindow(id: $0.0, title: $0.0, usedPercent: $0.1, resetsAt: now, observedAt: now)
+        }
+        let provider = WidgetSnapshot.Provider(id: "codex", threshold: 90, windows: windows, error: nil)
+        checkEqual(provider.topWindows(2).map(\.id), ["b", "d"])
+        checkEqual(provider.topWindows(5).map(\.id), ["a", "b", "c", "d"])
+    }
     func testNtfyDestinationValidation() throws {
         let destination = try NtfyDestination(server: "https://ntfy.sh/", topic: "usagebar_A1-b2")
         checkEqual(destination.server.absoluteString, "https://ntfy.sh")
@@ -102,6 +125,8 @@ extension UsageChecks {
         try checks.testDevinWithoutResetCannotTriggerFalseCycleAlerts()
         try checks.testDevinPercentageIsNotMultipliedAgain()
         try checks.testNtfyDestinationValidation()
-        print("9 UsageCore checks passed")
+        try checks.testWidgetSnapshotRoundTripAndFreshness()
+        checks.testWidgetTopWindowsKeepsOrderAndPicksMostConsumed()
+        print("11 UsageCore checks passed")
     }
 }
