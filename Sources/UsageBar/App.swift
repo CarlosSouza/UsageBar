@@ -71,10 +71,22 @@ struct Dashboard: View {
                 Spacer()
                 Button("Sair") { NSApp.terminate(nil) }.keyboardShortcut("q")
             }
+            .glassButtons()
             Text("Claude acompanha o CLI. Codex e Devin: a cada 5 min.")
                 .font(.caption2).foregroundStyle(.tertiary)
         }
         .padding(20).frame(width: 370)
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func glassButtons() -> some View {
+        if #available(macOS 26.0, *) {
+            buttonStyle(.glass)
+        } else {
+            self
+        }
     }
 }
 
