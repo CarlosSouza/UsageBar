@@ -65,6 +65,60 @@ public struct UsageWindow: Codable, Identifiable, Equatable, Sendable {
     }
 }
 
+/// Shared with the desktop widget through Application Support; only metrics, never credentials.
+public struct WidgetSnapshot: Codable, Equatable, Sendable {
+    public struct Provider: Codable, Equatable, Sendable {
+        public var id: String
+        public var threshold: Double
+        public var windows: [UsageWindow]
+        public var error: String?
+
+        public init(id: String, threshold: Double, windows: [UsageWindow], error: String?) {
+            self.id = id
+            self.threshold = threshold
+            self.windows = windows
+            self.error = error
+        }
+
+        public func isFresh(at now: Date) -> Bool {
+            error == nil && !windows.isEmpty && windows.allSatisfy { $0.isFresh(at: now) }
+        }
+
+        /// Keeps the original order but, when there are more windows than slots, shows the most consumed ones.
+        public func topWindows(_ limit: Int) -> [UsageWindow] {
+            guard windows.count > limit else { return windows }
+            let kept = Set(windows.sorted { $0.usedPercent > $1.usedPercent }.prefix(limit).map(\.id))
+            return windows.filter { kept.contains($0.id) }
+        }
+    }
+
+    public static let fileName = "widget.json"
+    public var providers: [Provider]
+
+    public init(providers: [Provider]) { self.providers = providers }
+
+    public static func decode(_ data: Data) throws -> WidgetSnapshot {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        return try decoder.decode(WidgetSnapshot.self, from: data)
+    }
+
+    public func encoded() throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .secondsSince1970
+        encoder.outputFormatting = [.sortedKeys]
+        return try encoder.encode(self)
+    }
+
+    public func provider(_ id: String) -> Provider? { providers.first { $0.id == id } }
+
+    /// Moments after `now` when a window turns stale or resets, so the widget redraws without the app.
+    public func transitions(after now: Date) -> [Date] {
+        let moments = providers.flatMap(\.windows).flatMap { [$0.observedAt.addingTimeInterval(900), $0.resetsAt] }
+        return Array(Set(moments.filter { $0 > now })).sorted()
+    }
+}
+
 /// A delivery is acknowledged only after its channel accepts it. State persists across launches.
 public struct AlertLedger: Codable, Sendable {
     public var delivered: [String: Date] = [:]
