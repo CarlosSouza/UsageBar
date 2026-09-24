@@ -10,6 +10,11 @@ binary_dir="$(swift build --product UsageBar -c release -debug-info-format none 
 app_path="$PWD/dist/UsageBar.app"
 mkdir -p "$app_path/Contents/MacOS" "$app_path/Contents/Resources"
 cp "$binary_dir/UsageBar" "$app_path/Contents/MacOS/UsageBar"
+# SwiftPM stamps the deployment target as the SDK version; without the real SDK
+# macOS runs the app in compatibility mode (no Liquid Glass). Must run before codesign.
+binary="$app_path/Contents/MacOS/UsageBar"
+minos="$(xcrun vtool -show-build "$binary" | awk '/minos/{print $2}')"
+xcrun vtool -set-build-version macos "$minos" "$(xcrun --show-sdk-version)" -replace -output "$binary" "$binary"
 cp README.md scripts/claude-statusline.py scripts/connect-claude.py "$app_path/Contents/Resources/"
 iconset="$build_path/AppIcon.iconset"
 mkdir -p "$iconset"
