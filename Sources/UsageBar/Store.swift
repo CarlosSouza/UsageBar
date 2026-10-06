@@ -3,6 +3,7 @@ import SwiftUI
 import UserNotifications
 import WidgetKit
 import UsageCore
+import CodexMultiAuth
 
 struct Preferences: Codable {
     var claudeThreshold = 90.0
@@ -17,13 +18,14 @@ struct Preferences: Codable {
     var ntfyServer = "https://ntfy.sh"
     var ntfyTopic = Preferences.makeNtfyTopic()
     var codexPath = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin/codex").path
+    var multiAuthPath = MultiAuthClient.defaultExecutable
 
     init() {}
 
     private enum CodingKeys: String, CodingKey {
         case claudeThreshold, codexThreshold, devinThreshold
         case claudeEnabled, codexEnabled, devinEnabled, devinOrganization
-        case macAlerts, ntfyAlerts, ntfyServer, ntfyTopic, codexPath
+        case macAlerts, ntfyAlerts, ntfyServer, ntfyTopic, codexPath, multiAuthPath
     }
 
     init(from decoder: Decoder) throws {
@@ -41,6 +43,7 @@ struct Preferences: Codable {
         ntfyServer = try values.decodeIfPresent(String.self, forKey: .ntfyServer) ?? ntfyServer
         ntfyTopic = try values.decodeIfPresent(String.self, forKey: .ntfyTopic) ?? ntfyTopic
         codexPath = try values.decodeIfPresent(String.self, forKey: .codexPath) ?? codexPath
+        multiAuthPath = try values.decodeIfPresent(String.self, forKey: .multiAuthPath) ?? multiAuthPath
     }
 
     static func makeNtfyTopic() -> String {
@@ -80,13 +83,30 @@ struct ProviderExport: Codable {
 
 @MainActor
 final class Store: ObservableObject {
-    @Published var preferences: Preferences { didSet { savePreferences() } }
+    @Published var preferences: Preferences {
+        didSet {
+            savePreferences()
+            if oldValue.multiAuthPath != preferences.multiAuthPath || oldValue.codexPath != preferences.codexPath {
+                lastMultiAuthRead = .distantPast
+                lastMultiAuthRefresh = .distantPast
+                lastCodexRead = .distantPast
+                multiAuth = nil
+                multiAuthError = nil
+                codex = ProviderState()
+            }
+        }
+    }
     @Published var claude = ProviderState()
     @Published var codex = ProviderState()
     @Published var devin = ProviderState()
     @Published var refreshing = false
     @Published var notice: String?
     @Published var notificationError: String?
+    @Published var multiAuth: MultiAuthSnapshot?
+    @Published var multiAuthError: String?
+    @Published var switchingAccount = false
+    private var lastMultiAuthRead = Date.distantPast
+    private var lastMultiAuthRefresh = Date.distantPast
     private var ledger: AlertLedger
     private var timer: Task<Void, Never>?
     private var lastCodexRead = Date.distantPast
@@ -119,7 +139,7 @@ final class Store: ObservableObject {
     }
 
     func refresh() async {
-        guard !refreshing else { return }
+        guard !refreshing, !switchingAccount else { return }
         refreshing = true
         defer { refreshing = false }
         if preferences.claudeEnabled {
@@ -132,7 +152,17 @@ final class Store: ObservableObject {
             }
             await evaluate(provider: "Claude", windows: claude.windows, threshold: preferences.claudeThreshold, valid: claude.error == nil)
         }
-        if preferences.codexEnabled && Date().timeIntervalSince(lastCodexRead) >= 300 {
+        let multiAuthClient = MultiAuthClient(executable: preferences.multiAuthPath)
+        if preferences.codexEnabled && multiAuthClient.isInstalled {
+            if Date().timeIntervalSince(lastMultiAuthRead) >= 30 {
+                await readMultiAuth(client: multiAuthClient)
+            }
+        } else {
+            if multiAuth != nil || multiAuthError != nil { lastCodexRead = .distantPast }
+            multiAuth = nil
+            multiAuthError = nil
+        }
+        if preferences.codexEnabled && multiAuth == nil && multiAuthError == nil && Date().timeIntervalSince(lastCodexRead) >= 300 {
             lastCodexRead = Date()
             let path = preferences.codexPath
             do {
@@ -155,6 +185,65 @@ final class Store: ObservableObject {
             await evaluate(provider: "Devin", windows: devin.windows, threshold: preferences.devinThreshold, valid: devin.error == nil)
         }
         publishWidgetSnapshot()
+    }
+
+    private func readMultiAuth(client: MultiAuthClient, refreshQuotas: Bool? = nil) async {
+        lastMultiAuthRead = Date()
+        let refreshQuotas = refreshQuotas ?? (Date().timeIntervalSince(lastMultiAuthRefresh) >= 300)
+        if refreshQuotas { lastMultiAuthRefresh = Date() }
+        do {
+            let snapshot = try await Task.detached { try client.limits(refresh: refreshQuotas) }.value
+            multiAuthError = nil
+            if snapshot.accounts.isEmpty {
+                if multiAuth != nil {
+                    codex = ProviderState()
+                    lastCodexRead = .distantPast
+                }
+                multiAuth = nil
+                return
+            }
+            multiAuth = snapshot
+            if let account = snapshot.selectedAccount {
+                codex = ProviderState(windows: account.windows,
+                    error: !account.enabled ? "The selected account is disabled." : account.windows.isEmpty ? "No quota data for the selected account." : nil)
+            } else {
+                codex = ProviderState(error: "No account is selected in multi-auth.")
+            }
+        } catch {
+            multiAuthError = "Unable to read multi-auth accounts. Check the executable in Settings."
+            codex = ProviderState(error: multiAuthError)
+        }
+        ProviderExport.write(codex, as: "codex")
+    }
+
+    func selectCodexAccount(_ account: MultiAuthSnapshot.Account?) async {
+        guard !switchingAccount, !refreshing else { return }
+        switchingAccount = true
+        multiAuthError = nil
+        codex = ProviderState(error: "Updating account selection…")
+        let client = MultiAuthClient(executable: preferences.multiAuthPath)
+        var failure: String?
+        do {
+            try await Task.detached {
+                if let account { try client.select(account) }
+                else { try client.unpin() }
+            }.value
+        } catch { failure = error.localizedDescription }
+        await readMultiAuth(client: client, refreshQuotas: false)
+        if let failure { multiAuthError = failure }
+        else if multiAuth?.selection.pinnedIndex != account?.index {
+            multiAuthError = "Account selection could not be confirmed. Refresh and try again."
+        }
+        switchingAccount = false
+        await refresh()
+    }
+
+    func refreshCodexAccounts() async {
+        guard !refreshing, !switchingAccount else { return }
+        lastMultiAuthRead = .distantPast
+        lastMultiAuthRefresh = .distantPast
+        lastCodexRead = .distantPast
+        await refresh()
     }
 
     private func publishWidgetSnapshot() {

@@ -5,7 +5,7 @@ export CLANG_MODULE_CACHE_PATH="${TMPDIR:-/tmp}/usagebar-clang"
 export SWIFTPM_MODULECACHE_OVERRIDE="${TMPDIR:-/tmp}/usagebar-modules"
 build_path="${TMPDIR:-/tmp}/usagebar-build"
 cache_path="${TMPDIR:-/tmp}/usagebar-cache"
-build_flags=(-c release -debug-info-format none --scratch-path "$build_path" --cache-path "$cache_path" --disable-sandbox)
+build_flags=(-c release -debug-info-format none --scratch-path "$build_path" --cache-path "$cache_path" --config-path "$cache_path/config" --security-path "$cache_path/security" --disable-sandbox)
 swift build --product UsageBar "${build_flags[@]}"
 swift build --product UsageBarWidget "${build_flags[@]}"
 binary_dir="$(swift build "${build_flags[@]}" --show-bin-path)"

@@ -24,6 +24,10 @@ Self-serve usa cota inclusa e créditos pré-pagos; visualiza uso do mês/cota/s
 
 ## Codex
 
+When codex-multi-auth is installed and its global account pool is populated, UsageBar reads the versioned `limits --json` interface. Account selection is polled every 30 seconds; `--refresh` is requested every 5 minutes. The panel uses the configured `selection.routedIndex`, which is not a guarantee of the account serving the next request in automatic mode. `switch` pins an account; `unpin` clears the pin without enabling the proxy. These commands operate on the global pool, while per-project routing and invocation overrides remain owned by multi-auth. [Command contract](https://github.com/ndycode/codex-multi-auth/blob/main/docs/reference/commands.md)
+
+JSON account indices are zero-based; `switch` expects a one-based index. Before switching, UsageBar reloads the pool and checks that the index and masked label still match an enabled account. Quota timestamps use milliseconds and preserve the original cache observation time. Unknown windows and unsuccessful quota statuses never become zero usage. Multi-auth stdout is decoded only for limits; mutation output and stderr are discarded. The app does not read or modify multi-auth credential files. A missing executable or empty pool uses the Codex app-server adapter below. A broken multi-auth command shows an error rather than metrics for a potentially different CLI account.
+
 O app usa o protocolo documentado de `codex app-server`, inicializa a conexão e consulta somente `account/rateLimits/read`. `rateLimitsByLimitId` permite várias cotas; cada janela informa `usedPercent`, `windowDurationMins` e `resetsAt`. O fallback `rateLimits` serve para versões anteriores. Não inicia conversas nem solicita inferência. [Documentação oficial OpenAI](https://developers.openai.com/pt-BR/docs/app-server)
 
 ## Notificações macOS, iPhone, Apple Watch

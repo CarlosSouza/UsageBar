@@ -31,6 +31,12 @@ To undo: restore only `statusLine` from the backup and remove the scripts from `
 
 Log in to the Codex CLI with your ChatGPT subscription and check the executable path in Settings. The app uses `codex app-server` and `account/rateLimits/read` every 5 minutes, with every window returned. It opens no conversations, sends no prompts and does not read authentication tokens directly. API key logins may not return subscription quotas.
 
+If [codex-multi-auth](https://github.com/ndycode/codex-multi-auth) is installed and has saved accounts, UsageBar uses its `limits --json` interface instead. The Codex section shows the configured account and a **Switch account** menu with each account's cached quota usage. Selecting an account runs `switch <index>` and pins it. **Automatic rotation** runs `unpin`; it clears the pin without enabling a disabled rotation proxy. Disabled accounts cannot be selected.
+
+Account selection is checked every 30 seconds. Quotas refresh every 5 minutes using `limits --json --refresh`, which respects the CLI's own freshness floor. The refresh button reloads the account pool and requests a quota refresh. Cached timestamps are preserved, and missing or failed quota reads stay unknown. After switching, the panel and widget use the newly selected account's cached metrics. An empty pool or missing multi-auth executable uses the original Codex CLI integration.
+
+The multi-auth executable is detected in common installation paths and can be changed in Settings. UsageBar delegates credential handling to the CLI. Manual switching affects the global pool and multi-auth routing; an invocation forced with `--account` keeps its own selection. With native desktop routing, the desktop login remains managed by Codex. Plain Codex sessions outside the router may need restarting to pick up a changed CLI login.
+
 ## Devin (experimental)
 
 The public consumption API requires Enterprise. This adapter uses the undocumented web dashboard endpoint, also identified in the CodexBar source. Compatibility with Core/basic accounts still needs confirming; no ACU balance is artificially converted into a percentage.

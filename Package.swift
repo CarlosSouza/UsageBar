@@ -10,7 +10,8 @@ let package = Package(
     ],
     targets: [
         .target(name: "UsageCore"),
-        .executableTarget(name: "UsageBar", dependencies: ["UsageCore"]),
+        .target(name: "CodexMultiAuth", dependencies: ["UsageCore"]),
+        .executableTarget(name: "UsageBar", dependencies: ["UsageCore", "CodexMultiAuth"]),
         // WidgetKit extensions must start at NSExtensionMain; with the default entry point the
         // extension traps during bootstrap and never shows up in the widget gallery.
         .executableTarget(
@@ -19,7 +20,7 @@ let package = Package(
             swiftSettings: [.unsafeFlags(["-application-extension"])],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"])]
         ),
-        .executableTarget(name: "UsageCoreChecks", dependencies: ["UsageCore"], path: "Tests/UsageCoreTests")
+        .executableTarget(name: "UsageCoreChecks", dependencies: ["UsageCore", "CodexMultiAuth"], path: "Tests/UsageCoreTests")
     ],
     swiftLanguageModes: [.v5]
 )

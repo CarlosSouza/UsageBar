@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import UserNotifications
 import UsageCore
+import CodexMultiAuth
 
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -50,6 +51,7 @@ struct Dashboard: View {
             Divider()
             ProviderView(name: "Codex", symbol: "terminal", color: .teal, state: store.codex,
                          threshold: store.preferences.codexThreshold, enabled: store.preferences.codexEnabled)
+            if store.preferences.codexEnabled { CodexAccountMenu(store: store) }
             Divider()
             ProviderView(name: "Devin · experimental", symbol: "cpu", color: .blue, state: store.devin,
                          threshold: store.preferences.devinThreshold, enabled: store.preferences.devinEnabled,
@@ -76,6 +78,67 @@ struct Dashboard: View {
                 .font(.caption2).foregroundStyle(.tertiary)
         }
         .padding(20).frame(width: 370)
+    }
+}
+
+struct CodexAccountMenu: View {
+    @ObservedObject var store: Store
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let snapshot = store.multiAuth {
+                HStack {
+                    Menu {
+                        Button {
+                            Task { await store.selectCodexAccount(nil) }
+                        } label: {
+                            Label("Automatic rotation", systemImage: snapshot.selection.pinnedIndex == nil ? "checkmark" : "arrow.triangle.2.circlepath")
+                        }
+                        Divider()
+                        ForEach(snapshot.accounts) { account in
+                            Button {
+                                Task { await store.selectCodexAccount(account) }
+                            } label: {
+                                Label(accountTitle(account), systemImage: snapshot.selection.pinnedIndex == account.index ? "checkmark" : "person.crop.circle")
+                            }
+                            .disabled(!account.enabled)
+                        }
+                    } label: {
+                        Label(store.switchingAccount ? "Switching…" : "Switch account", systemImage: "person.crop.circle")
+                    }
+                    Spacer()
+                    Button {
+                        Task { await store.refreshCodexAccounts() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .help("Refresh accounts and quotas")
+                    .accessibilityLabel("Refresh Codex accounts")
+                }
+                .disabled(store.switchingAccount || store.refreshing)
+                Text("\(snapshot.selection.pinnedIndex == nil ? "Automatic" : "Pinned"): \(snapshot.selectedAccount?.label ?? "Unknown account")")
+                    .lineLimit(2)
+                Text("Selection applies to multi-auth routing. Desktop sign-in is managed by Codex.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let error = store.multiAuthError {
+                Text(error).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                if store.multiAuth == nil {
+                    Button("Retry multi-auth") { Task { await store.refreshCodexAccounts() } }
+                        .disabled(store.refreshing || store.switchingAccount)
+                }
+            }
+        }
+        .font(.caption)
+    }
+
+    private func accountTitle(_ account: MultiAuthSnapshot.Account) -> String {
+        guard account.enabled else { return "\(account.label) · Disabled" }
+        guard !account.windows.isEmpty else { return "\(account.label) · Quota unknown" }
+        let quota = account.windows.map { "\($0.title): \(Int($0.usedPercent.rounded()))%" }.joined(separator: ", ")
+        let stale = account.windows.allSatisfy { $0.isFresh(at: Date()) } ? "" : " · Stale"
+        return "\(account.label) · \(quota)\(stale)"
     }
 }
 
@@ -163,6 +226,11 @@ struct SettingsView: View {
                 }
                 Section("Conexões") {
                     TextField("Executável do Codex", text: $store.preferences.codexPath)
+                    TextField("Multi-auth executable", text: $store.preferences.multiAuthPath)
+                    Text("When installed, multi-auth provides account selection and quotas. An empty account pool uses the Codex CLI connection.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button("Refresh Codex accounts") { Task { await store.refreshCodexAccounts() } }
+                        .disabled(store.refreshing || store.switchingAccount)
                     Text("Use o mesmo Codex CLI conectado à sua assinatura. Mudanças são aplicadas na próxima consulta, em até 5 minutos.")
                         .font(.caption).foregroundStyle(.secondary)
                     Button("Guia de conexão do Claude") {

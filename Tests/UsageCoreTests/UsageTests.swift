@@ -127,6 +127,8 @@ extension UsageChecks {
         try checks.testNtfyDestinationValidation()
         try checks.testWidgetSnapshotRoundTripAndFreshness()
         checks.testWidgetTopWindowsKeepsOrderAndPicksMostConsumed()
+        try runMultiAuthChecks()
+        if CommandLine.arguments.contains("--check-installed-multi-auth") { try checkInstalledMultiAuth() }
         print("11 UsageCore checks passed")
     }
 }
